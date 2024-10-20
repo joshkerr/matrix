@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,6 +55,42 @@ var greenTrueScale = [...]rbg{
 	{40, 180, 40}, {30, 175, 30}, {30, 170, 30}, {20, 160, 20}, {10, 150, 10}, {10, 140, 10},
 	{10, 130, 10}, {0, 120, 0}, {0, 100, 0}, {0, 90, 0}, {0, 80, 0}, {0, 70, 0}, {0, 60, 0},
 	{0, 50, 0}, {0, 40, 0}, {0, 60, 0}, {0, 20, 0}, {0, 10, 0}, {0, 0, 0}, {0, 0, 0},
+}
+
+var redTrueScale = [...]rbg{
+	{255, 255, 255},
+	{210, 80, 80}, {200, 70, 70}, {195, 60, 60}, {190, 50, 50}, {185, 40, 40},
+	{180, 30, 30}, {175, 20, 20}, {170, 10, 10}, {160, 0, 0}, {150, 0, 0}, {140, 0, 0},
+	{130, 0, 0}, {120, 0, 0}, {100, 0, 0}, {90, 0, 0}, {80, 0, 0}, {70, 0, 0}, {60, 0, 0},
+	{50, 0, 0}, {40, 0, 0}, {30, 0, 0}, {20, 0, 0}, {10, 0, 0}, {0, 0, 0}, {0, 0, 0},
+}
+
+var blueTrueScale = [...]rbg{
+	{255, 255, 255},
+	{80, 80, 210}, {70, 70, 200}, {60, 60, 195}, {50, 50, 190}, {40, 40, 185},
+	{30, 30, 180}, {20, 20, 175}, {10, 10, 170}, {0, 0, 160}, {0, 0, 150}, {0, 0, 140},
+	{0, 0, 130}, {0, 0, 120}, {0, 0, 100}, {0, 0, 90}, {0, 0, 80}, {0, 0, 70}, {0, 0, 60},
+	{0, 0, 50}, {0, 0, 40}, {0, 0, 30}, {0, 0, 20}, {0, 0, 10}, {0, 0, 0}, {0, 0, 0},
+}
+
+var yellowTrueScale = [...]rbg{
+	{255, 255, 255},
+	{210, 210, 80}, {200, 200, 70}, {195, 195, 60}, {190, 190, 50}, {185, 185, 40},
+	{180, 180, 30}, {175, 175, 20}, {170, 170, 10}, {160, 160, 0}, {150, 150, 0}, {140, 140, 0},
+	{130, 130, 0}, {120, 120, 0}, {100, 100, 0}, {90, 90, 0}, {80, 80, 0}, {70, 70, 0}, {60, 60, 0},
+	{50, 50, 0}, {40, 40, 0}, {30, 30, 0}, {20, 20, 0}, {10, 10, 0}, {0, 0, 0}, {0, 0, 0},
+}
+
+var red256Scale = [...]int{
+	255, 196, 160, 124, 88, 52, 16, 0,
+}
+
+var blue256Scale = [...]int{
+	255, 117, 81, 45, 39, 33, 27, 21,
+}
+
+var yellow256Scale = [...]int{
+	255, 228, 222, 216, 210, 204, 198, 192,
 }
 
 type printType struct {
@@ -113,22 +151,21 @@ func getColorFactor(size int) float64 {
 	return float64(len(green256Scale)-1) / float64(size-1)
 }
 
-func getPrintChar(colorFactor float64, position int, char string) string {
+func getPrintChar(colorFactor float64, position int, char string, color string) string {
 	if trueColors {
-		color := greenTrueScale[int((float64(position) * colorFactor))]
-		return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[0m", color.r, color.g, color.b, char)
+		r, g, b := getColorValues(color, int((float64(position) * colorFactor)))
+		return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[0m", r, g, b, char)
 	}
-	color := green256Scale[int((float64(position) * colorFactor))]
-	return fmt.Sprintf("\033[38;5;%dm%s", color, char)
+	colorCode := getColor256Code(color, int((float64(position) * colorFactor)))
+	return fmt.Sprintf("\033[38;5;%dm%s", colorCode, char)
 }
 
-func printLine(c chan printType) {
-	// using range allow us to close the channel to end the function
+func printLine(c chan printType, color string) {
 	for i := range c {
 		colorFactor := getColorFactor(i.size)
 		for position, char := range i.chars {
 			y := i.y - position
-			pchar := getPrintChar(colorFactor, position, char)
+			pchar := getPrintChar(colorFactor, position, char, color) // Add color parameter here
 			if y > 0 && y < tm.Height() {
 				tm.MoveCursor(i.x, y)
 				tm.Printf(pchar)
@@ -180,7 +217,7 @@ func (j *jobType) markRunning(id int) {
 	j.mu.Unlock()
 }
 
-func jobManager(maxCollumns int) {
+func jobManager(maxCollumns int, color string) {
 
 	// Initiating Jobs
 	jobs := jobType{}
@@ -193,7 +230,7 @@ func jobManager(maxCollumns int) {
 
 	// Start Goroutine which prints on screen
 	printChan := make(chan printType)
-	go printLine(printChan)
+	go printLine(printChan, color)
 
 	// Let's randomly select an x value with up to "maxCollums"
 	// Kanji consumes 2 normal chars, so it's limited by half the terminal width
@@ -227,20 +264,47 @@ Loop:
 	close(printChan)
 }
 
+func getColor256Code(color string, index int) int {
+	switch color {
+	case "red":
+		return red256Scale[index]
+	case "blue":
+		return blue256Scale[index]
+	case "yellow":
+		return yellow256Scale[index]
+	default: // green
+		return green256Scale[index]
+	}
+}
+
+func getColorValues(color string, index int) (int, int, int) {
+	switch color {
+	case "red":
+		return redTrueScale[index].r, redTrueScale[index].g, redTrueScale[index].b
+	case "blue":
+		return blueTrueScale[index].r, blueTrueScale[index].g, blueTrueScale[index].b
+	case "yellow":
+		return yellowTrueScale[index].r, yellowTrueScale[index].g, yellowTrueScale[index].b
+	default: // green
+		return greenTrueScale[index].r, greenTrueScale[index].g, greenTrueScale[index].b
+	}
+}
+
 func main() {
+	color := "green" // Default color
+	if len(os.Args) > 1 {
+		color = strings.ToLower(os.Args[1])
+	}
 
 	tm.Clear()
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	// Hiding the cursor with tput civis
-	// Could not use exec.Command("tput", "civis"), but using 'sh' package works
-	// TODO: find out why 'exec.Command' does not work
 	sh.Command("tput", "civis").Run()
 
 	// Kanji does use the same of two chars
-	// TODO: Add command line parameter to define the max number of collumns
 	Maxcollumns := tm.Width() / 2
-	jobManager(Maxcollumns)
+	jobManager(Maxcollumns, color)
 
 	// Reseting all colors
 	tm.Println("\033[0m")
@@ -252,5 +316,4 @@ func main() {
 	tm.MoveCursor(1, tm.Height())
 	tm.Clear()
 	tm.Flush()
-
 }
